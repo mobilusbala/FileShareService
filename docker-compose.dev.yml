@@ -1,0 +1,33 @@
+version: "3.4"
+
+volumes:
+    recordings:
+
+services:
+  api:
+    build:
+      context: .
+      target: development
+    user: root
+    volumes:
+      - ./:/usr/src/app
+      - /usr/src/app/node_modules
+      - /var/lib/recordings/:/var/lib/recordings/:rw
+    ports:
+      - 4000:4000
+    env_file:
+      - .env    
+    command: >
+            sh -c "npm run dev &&
+                   sudo chmod -R 777 /var/lib/recordings/"
+
+
+
+  
+
+
+
+
+
+
+

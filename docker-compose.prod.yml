@@ -1,0 +1,15 @@
+version: '3.4'
+
+volumes:
+    recordings:
+
+services:
+  api:
+    image: "{Image-Url}"
+
+    ports:
+      - 4000:4000
+    env_file:
+      - .env
+    volumes:
+      - /var/lib/recordings/:/var/lib/recordings/   

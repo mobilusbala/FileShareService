@@ -1,0 +1,100 @@
+name: "Test & Build"
+
+on: [push]
+
+jobs:
+  properties:
+    concurrency: single-job
+    runs-on: ubuntu-20.04
+
+    outputs:
+      debug_mode: ${{ steps.properties.outputs.debug_mode }}
+      verbose: ${{ steps.properties.outputs.verbose }}
+      dockerfile: ${{ steps.properties.outputs.dockerfile }}
+      image: ${{ steps.properties.outputs.image }}
+      image_tag_key: ${{ steps.properties.outputs.image_tag_key }}
+
+    steps:
+      - name: Spin up
+        id: properties
+        shell: bash
+        run: |
+          set -ueo pipefail
+          # set debug_mode to true for test run!
+          echo "::set-output name=debug_mode::false"
+          # verbose output
+          echo "::set-output name=verbose::false"
+          # Dockerfile name if custom one will be used
+          echo "::set-output name=dockerfile::Dockerfile"
+          # docker image name in registry. image version tag will be set by the docker_meta step
+          echo "::set-output name=image::fsservice"
+          # name of .env (docker-image-tags-*.env). We use it in the docker-compose.yml
+          echo "::set-output name=image_tag_key::FSSERVICE"
+      - name: Check GitHub secrets
+        shell: bash
+        run: |
+          ERROR="false"
+          [[ "${{ secrets.MOBILUSLABS_GITHUB_TOKEN }}" == "" ]]  && ERROR="true" && echo "::error::Missing MOBILUSLABS_GITHUB_TOKEN, check GitHub secrets"
+          [[ "${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}" == "" ]] && ERROR="true" && echo "::error::Missing DIGITALOCEAN_ACCESS_TOKEN, check GitHub secrets"
+          if [[ "${ERROR}" == "true" ]]; then
+            echo "::error::Please update GitHub secrets!"
+            exit 1
+          else
+            exit 0
+          fi
+  ##############################################################################
+  test:
+    if: github.event_name != 'pull_request'
+    needs: properties
+    concurrency: single-job
+    runs-on: ubuntu-20.04
+
+    steps:
+      - name: CI test
+        shell: bash
+        run: |
+          set -ueo pipefail
+          [[ "${{ needs.properties.outputs.verbose }}" == "true" ]] && set -x
+          :
+  ##############################################################################
+  build:
+    if: github.event_name != 'pull_request'
+    needs: [properties, test]
+    concurrency: single-job
+    runs-on: ubuntu-20.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Setup QEMU
+        uses: docker/setup-qemu-action@v1
+
+      - name: Setup docker buildx
+        uses: docker/setup-buildx-action@v1.6.0
+
+      - name: Login to mobiluslabs docker registry
+        uses: docker/login-action@v1
+        with:
+          username: ${{ secrets.DIGITALOCEAN_REGISTRY_TOKEN }}
+          password: ${{ secrets.DIGITALOCEAN_REGISTRY_TOKEN }}
+          registry: registry.digitalocean.com
+
+      - name: Set docker tags and labels
+        uses: crazy-max/ghaction-docker-meta@v3
+        id: docker_meta
+        with:
+          images: "registry.digitalocean.com/mobiluslabs/${{ needs.properties.outputs.image }}"
+          tags: |
+            type=sha,enable=false
+            type=ref,event=branch
+            type=ref,event=tag
+      - name: Build and push Docker images
+        uses: docker/build-push-action@v2
+        with:
+          context: .
+          file: "${{ needs.properties.outputs.dockerfile }}"
+          # platforms: linux/amd64,linux/arm/v7,linux/arm64
+          push: true
+          tags: ${{ steps.docker_meta.outputs.tags }}
+          labels: ${{ steps.docker_meta.outputs.labels }}
