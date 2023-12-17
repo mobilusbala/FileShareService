@@ -6,9 +6,6 @@ import cors from "cors";
 
 const app = express();
 
-//app.use(cors); /* NEW */
-
-//app.use(express.json());
 
 app.listen(4000, () => console.log("listening on port 4000"));
 
